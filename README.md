@@ -1,1 +1,3 @@
-# R_POL__Statistical-analysis-hypothesis-testing
+# Opis 
+
+rezultat: https://students.mimuw.edu.pl/~kz419420/SAD/projekt_1/
