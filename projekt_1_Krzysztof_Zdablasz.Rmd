@@ -1,0 +1,372 @@
+---
+title: "Projekt 1, SAD 2022. Analiza danych 'people'."
+author: "Krzysztof Zdąbłasz"
+output: html_document
+---
+```{css, echo=FALSE}
+.code {
+  background-color: #e4eff5;
+  border: 1px solid lightgrey;
+
+}
+.out {
+  background-color: #ebfbe8;
+  border: 1px solid lightgrey;
+}
+h1 {
+  color: #2319b7;
+}
+
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(GGally)
+library(ggcorrplot)
+library(Hmisc)
+library(car)
+library(jmuOutlier)
+```
+# ZAD. 1
+
+## 1.1 Eksploracja danych
+
+```{r class.source="code", class.output="out"}
+dane = read.table("people.tab.csv", header = TRUE, stringsAsFactors = TRUE)
+summary(dane)
+```
+
+**W danych znajduje się 500 obserwacji. Jest to łącznie 9 zmiennych.**  
+
+* 6 zmiennych ilościowych:
+    + Wiek
+    + Waga
+    + Wzrost
+    + Liczba dzieci
+    + Wydatki
+    + Oszczędności
+* 3 zmienne jakościowe:
+    + Płeć
+    + Stan cywilny
+    + Budynek
+
+**Ogólnie dane są poprawne i pełne, natomiast w kolumnie płeć 38 danych jest niedostępne (NA).**  
+
+```{r class.source="code", class.output="out"}
+print( paste('Puste obserwacje: ',sum(is.na(dane))) )
+```
+
+**Potwierdzenie, że tylko te dane są niedostępne.**  
+
+## 1.2 Zależności między zmiennymi ilościowymi  
+
+**W celu zbadania zależności między zmiennymi ilościowymi obliczam współczynniki korelacji Pearsona**  
+
+```{r class.source="code", class.output="out"}
+zmienne_ilosciowe = c(1,2,3,6,8,9)
+zmienne_jakosciowe = c(4,5,7)
+
+corelation = cor(dane[zmienne_ilosciowe], method='pearson')
+ggcorrplot(corelation, type="lower", lab=TRUE, outline.color = "white")
+
+```  
+
+**Okazuje się, że w danych występuje silna liniowa korelacja między zmiennymi *oszczędności* a *wiek* (współczynnik korelacji równy ~0.89).  Zauważalna jest również korelacja między wzrostem a wagą (~0.7) oraz słabsza między liczbą dzieci a wydatkami (~0.63).**
+
+```{r class.source="code", class.output="out"}
+ggpairs(dane[zmienne_ilosciowe])
+```
+
+```{r class.source="code", class.output="out"}
+rcorr(as.matrix(dane[zmienne_ilosciowe]))$P
+
+```
+
+**Macierz p-wartości dla statystyki, w której hipotezą zerową jest założenie o nieskorelowaniu zmiennych. Dla przecięć oszczędności-wiek, waga-wzrost oraz liczba_dzieci-wydatki p-wartości są praktycznie równe zeru. Daje to podstawy do odrzucenia hipotezy zerowej dla tych par.**  
+
+## 1.3 Zależności między zmiennymi jakościowymi  
+
+**W celu zbadania zależności między zmiennymi jakościowymi wykonam testy chi-kwadrat. Na wszelki wypadek testy zostaną przeprowadzone rówież dla danych po usunięciu rekordów zawierających NA.**
+
+```{r class.source="code", class.output="out"}
+dane_bezNA = na.omit(dane)
+
+chisq.test(dane_bezNA[zmienne_jakosciowe]$plec,dane_bezNA[zmienne_jakosciowe]$stan_cywilny)
+chisq.test(dane_bezNA[zmienne_jakosciowe]$plec,dane_bezNA[zmienne_jakosciowe]$budynek)
+chisq.test(dane_bezNA[zmienne_jakosciowe]$stan_cywilny,dane_bezNA[zmienne_jakosciowe]$budynek)
+# ----------------------------------------------------------------------------------------------
+chisq.test(dane[zmienne_jakosciowe]$plec,dane[zmienne_jakosciowe]$stan_cywilny)
+chisq.test(dane[zmienne_jakosciowe]$plec,dane[zmienne_jakosciowe]$budynek)
+chisq.test(dane[zmienne_jakosciowe]$stan_cywilny,dane[zmienne_jakosciowe]$budynek)
+```
+
+**Wyniki testów są zdecydowanie wyższe niż 0.05, więc nie ma podstaw do odrzucenia hipotezy zerowej o niezależności żadnej z badanych par zmiennych jakościowych.**  
+**Dodatkowe ilustracje:**
+
+```{r class.source="code", class.output="out"}
+ggpairs(dane_bezNA[zmienne_jakosciowe])
+```
+
+# ZAD. 2
+
+## 2.1 Wykres typu scatter-plot
+```{r class.source="code", class.output="out"}
+pairs(dane[zmienne_ilosciowe], col='#2424244d')
+```
+
+## 2.2 Wykres typu box-plot
+```{r class.source="code", class.output="out"}
+kobiety = subset(dane, plec == 'K')
+mezczyzni = subset(dane, plec == 'M')
+boxplot(kobiety$wydatki,mezczyzni$wydatki, ylab='Wydatki',names=c('Kobiety','Mężczyźni'))
+
+```
+
+## 2.3 Wykres typu pie-chart  
+```{r class.source="code", class.output="out"}
+tabela = table(dane$budynek)
+percents = round(as.numeric(tabela)/sum(tabela)*100)
+percents = paste(percents,'%',sep='')
+names = names(tabela)
+labels = paste(names,'-',percents,sep=' ')
+
+pie(tabela, labels = labels)
+
+```
+
+# ZAD. 3
+
+**Do sprawdzenia p-wartości dla hipotezy o wartości średniej = 170[cm] wykorzystam test t-studenta, ponieważ nie znamy wartośći średniej ani wariancji. Test ten wymaga założenia, że dane mają rozkład normalny. Warto jest sprawdzić to założenie, chociaż tak naprawdę są to dane dotyczące wzrostu, a cecha ta ma w społczeństwie rozkład normalny, ponadto danych jest dużo (500).**
+
+```{r class.source="code", class.output="out"}
+qqPlot(dane$wzrost,id=FALSE)
+```
+
+**Zdecydowana większość danych zawiera się w przedziale narysowanym przez funkcję qqPlot. Kilka z nich wypada z przedziału (na początku i końcu), ale nie powinny mieć one dużego wpływu.**
+
+```{r class.source="code", class.output="out"}
+hist(dane$wzrost, prob=TRUE,main='Histogram wzrostu',breaks=25,ylab = '',xlab='Wzrost')
+lines(density(dane$wzrost))
+```
+
+**Histogram ukazuje gęstość bardzo zbliżoną do rozkładu normalnego. Niemniej jednak można przeprowadzić dodatkowy test Shapiro-Wilka.**
+
+```{r class.source="code", class.output="out"}
+shapiro.test(dane$wzrost)
+```
+
+**Wynik nie daje podstaw do odrzucenia hipotezy zerowej, że wzrost ma rozkład normalny - p-wartość jest wysoka. Można więc przejść do wyznaczenia p-wartości hipotez z treści zadania.**
+
+```{r class.source="code", class.output="out"}
+pval170 = t.test(dane$wzrost, mu = 170, alternative = "less")$p.value
+print(paste('p-value dla hipotezy o średniej = 170[cm]: ',pval170,sep=' '))
+```
+
+**Brak podstaw do odrzucenia hipotezy zerowej.**  
+**Do sprawdzenia p-wartości dla hipotezy o medianie równej 165[cm] wykorzystam test Wilcoxona.**
+
+```{r class.source="code", class.output="out"}
+pval165 = wilcox.test(dane$wzrost, mu=165, alternative="less")$p.value
+print(paste('p-value dla hipotezy o medianie = 165[cm]: ',pval165,sep=' '))
+```
+
+**Bardzo wysoka p-value (prawie równa 1), brak podstaw do odrzucenia hipotezy zerowej.**
+
+# ZAD. 4
+
+```{r class.source="code", class.output="out"}
+n=nrow(dane)
+srednia=mean(dane$wiek)
+sdt=sd(dane$wiek)
+alfa=0.01
+kwantyl=qnorm(1-alfa/2)
+```
+
+**Przedział ufności dla średniej**
+
+```{r class.source="code", class.output="out"}
+c(srednia - kwantyl*sdt/sqrt(n), srednia + kwantyl*sdt/sqrt(n))
+```
+
+**Przedział ufności dla odchylenia standardowego**
+
+```{r class.source="code", class.output="out"}
+sdt*sqrt(2*n) / c(sqrt(2*n-3)+kwantyl, sqrt(2*n-3)-kwantyl)
+```
+
+**Przedział ufności dla kwantyli**
+
+```{r class.source="code", class.output="out"}
+quantileCI(dane$wiek, prob = 0.25, conf.level = 0.99)
+quantileCI(dane$wiek, prob = 0.5, conf.level = 0.99)
+quantileCI(dane$wiek, prob = 0.75, conf.level = 0.99)
+```
+
+# ZAD 5.
+
+## 5.1 Średnie wybranej zmiennej między osobami po ślubie a bez ślubu są równe  
+
+**Zmienna wzrost. Wykorzystam test t-studenta dla dwóch próbek. Zakładam, że mają rozkład normalny, bo zmienna wzrost ma rozkład normalny co sprawdziliśmy wcześniej. Można to też zobaczyć korzystając z qqPlot, prawie wszystkie obserwacje wpadają w obszar, ale nie będę ich już tutaj umieszczał. H0 - średnie są takie same.**
+
+```{r class.source="code", class.output="out"}
+po_slubie = dane[dane$stan_cywilny == TRUE,]
+bez_slubu = dane[dane$stan_cywilny == FALSE,]
+t.test(po_slubie$wzrost, bez_slubu$wzrost, conf.level = 0.99)
+```
+
+**Wynik testu świadczy o tym, że nie ma podstaw do odrzucenia hipotezy zerowej.**
+
+## 5.2 Dwie wybrane zmienne ilościowe są niezależne  
+
+**Zmienne wiek i liczba_dzieci. Do zbadania niezależności zmiennych ilościowych wykorzystam test korelacji z H0, że cor=0.**
+
+```{r class.source="code", class.output="out"}
+cor.test(dane$wiek, dane$liczba_dzieci, conf.level = 0.99)
+```
+
+**Nie są skorelowane.**
+
+## 5.3 Dwie wybrane zmienne jakościowe są niezależne
+
+**Założenie, że wartości są skokowe spełniona. H0 - płeć i stan cywilny są niezależne.**
+
+```{r class.source="code", class.output="out"}
+chisq.test(table(dane[c(4,5)]))
+
+```
+
+**p-value jest większe niż przedział ufności 0.01. Nie ma podstaw do odrzucenia hipotezy zerowej.**
+
+## 5.4 Zgodność z rozkładem parametrycznym  
+
+**Sprawdzenie czy rozkład wzrostu jest zgodny z rozkładem wykładniczym z parametrem 5. H0 - jest zgodny. Test Kołomogorowa-Smirnowa.**
+
+```{r class.source="code", class.output="out"}
+set.seed(420) # ustalenie liczb losowych dla reprodukowalności - wygenerowane dane z rozkładu wykładniczego
+ks.test(dane$wzrost,rexp(500, rate=5))
+```
+
+**p-wartość bardzo niska, niższa niż 0.01. Odrzucamy hipotezę zerową (zresztą wcześniej sprawdziliśmy, że wzrost ma rozkład normalny, więc wydaje się to oczywiste.**  
+
+# ZAD. 6
+**Zacznijmy od pełnego modelu (dane bez obserwacji zawierających NA)**
+
+```{r class.source="code", class.output="out"}
+pelny_model = lm(formula = oszczednosci ~ wiek + waga + wzrost + plec + stan_cywilny +  liczba_dzieci + budynek + wydatki, data = dane_bezNA)
+summary(pelny_model)
+summary(pelny_model)$coefficients[,4] # p-wartości zmiennych w pełnym modelu
+pelny_model_rss = sum(pelny_model$residuals^2)
+pelny_model_r2 = summary(pelny_model)$r.squared
+```
+**Ogólnie poza płcią i stanem cywilnym, wszystkie zmienne wydają się być ważne dla naszego modelu. Mają bardzo niskie p-wartości.**
+
+**Stworzenie modeli z różnymi pominiętymi zmiennymi i porównanie do głównego modelu:**
+```{r class.source="code", class.output="out"}
+models = list(
+  pelny_model,
+  lm(formula = oszczednosci ~ wiek + waga + wzrost + plec + stan_cywilny +  liczba_dzieci + budynek, data = dane_bezNA),
+  lm(formula = oszczednosci ~ wiek + waga + wzrost + plec + stan_cywilny +  liczba_dzieci + wydatki, data = dane_bezNA),
+  lm(formula = oszczednosci ~ wiek + waga + wzrost + plec + stan_cywilny + budynek + wydatki, data = dane_bezNA),
+  lm(formula = oszczednosci ~ wiek + waga + wzrost + plec +  liczba_dzieci + budynek + wydatki, data = dane_bezNA),
+  lm(formula = oszczednosci ~ wiek + waga + wzrost + stan_cywilny +  liczba_dzieci + budynek + wydatki, data = dane_bezNA),
+  lm(formula = oszczednosci ~ wiek + waga + plec + stan_cywilny +  liczba_dzieci + budynek + wydatki, data = dane_bezNA),
+  lm(formula = oszczednosci ~ wiek + wzrost + plec + stan_cywilny +  liczba_dzieci + budynek + wydatki, data = dane_bezNA),
+  lm(formula = oszczednosci ~ waga + wzrost + plec + stan_cywilny +  liczba_dzieci + budynek + wydatki, data = dane_bezNA)
+)
+names = c(
+  'Pełny model','Bez wydatków','Bez budynku','Bez liczby dzieci','Bez stanu cywilnego','Bez płci','Bez wzrostu', 'Bez wagi','Bez wieku'
+  
+)
+print_model_data <- function(specified_model, name,full_model_rss,full_model_r2){
+  rss = sum(specified_model$residuals^2)
+  r2 = summary(specified_model)$r.squared
+  cat(paste(
+    paste('Model:',name),
+    paste('RSS: ',round(rss,digits=4),', R2: ',round(r2,digits=4), sep=''),
+    paste('Wzrost RSS: ',round(rss-full_model_rss,digits=1),', Spadek R2: ',round(full_model_r2-r2,digits=8), sep='')
+  ,'\n',sep='\n'))
+  
+}
+
+i=1
+for (m in models){
+  print_model_data(m,names[i],pelny_model_rss,pelny_model_r2)
+  i=i+1
+}
+
+```
+**Równie mało znaczące wydają się być zmienne stan cywily i płeć. Płeć jednak ma większą p-wartość w pełnym modelu, dlatego to ją zdecydowałbym się wykluczyć, gdybym musiał wybrać jedną zmienną. Uważam natomiast, że obie są niepotrzebne, dlatego wolę zrezygnować z obu. Pokazały to również testy które przeprowadziłem poza raportem. Dodatkowo gdy zrezygnujemy ze stanu cywilnego model może zostać skonstruowany na całych danych, bez straty 38 obserwacji. **
+
+**Model bez płci i stanu cywilnego:**
+```{r class.source="code", class.output="out"}
+bez_dwoch = lm(formula = oszczednosci ~ wiek + waga + wzrost +  liczba_dzieci + budynek + wydatki, data = dane)
+summary(bez_dwoch)
+rss = sum(bez_dwoch$residuals^2)
+r2 = summary(bez_dwoch)$r.squared
+print(paste('RSS: ',rss,', R2: ',r2,sep=''))
+```
+**Warto zauważyć, że R2 jest większe niż w początkowym modelu, co może wydawać się dziwne, ze względu na to, że pozbyliśmy się dwóch zmiennych. Użyliśmy natomiast danych powiększonych o 38 obserwacji, stąd ta różnica. Dodatkowa uwaga: wydaje mi się, że dzielenie danych na treningowe i testowe nie jest konieczne na potrzeby tego raportu, dlatego tego nie zrobiłem, chociaż normalnie bym zrobił (tak samo jak przekształcenie danych np na postać BMI, czy zastosowanie optymalizacji regresji).**
+```{r class.source="code", class.output="out"}
+plot(bez_dwoch)
+```
+
+**Jest kilka obserwacji odstających, których należałoby się pozbyć.**
+
+```{r class.source="code", class.output="out"}
+shapiro.test(bez_dwoch$residuals)
+```
+**Test Shapiro-Wilka wskazuje na to, że założenie o rozkładzie normalnym nie jest spełnione. Po przeprowadzonych analizach wybrałem 5 obserwacji odstających (440,230,296,137,121) i pozbyłem się ich z końcowego modelu.**
+```{r class.source="code", class.output="out"}
+odstajace = c(440,230,296,137,121)
+dane_bez_odstajacych = dane[-odstajace,]
+model_poprawiony = lm(formula = oszczednosci ~ wiek + waga + wzrost +  liczba_dzieci + budynek + wydatki, data = dane_bez_odstajacych)
+summary(model_poprawiony)
+rss = sum(model_poprawiony$residuals^2)
+r2 = summary(model_poprawiony)$r.squared
+print(paste('RSS: ',rss,', R2: ',r2,sep=''))
+shapiro.test(model_poprawiony$residuals)
+qqPlot(model_poprawiony$residuals,id=FALSE)
+
+```
+
+**Założenie o normalności jest teraz spełnione, test Shapo-Wilka i qqPlot sugerują zgodność z rozkładem normalnym.**
+```{r class.source="code", class.output="out"}
+plot(ts(model_poprawiony$residuals))
+```
+
+**Amplitudy nie grupują się w lejek, wykres oscyluje wokół zera.**
+
+```{r class.source="code", class.output="out"}
+plot(model_poprawiony, which = 1)
+```
+
+**Wydaje mi się, że na podstawie wykresu reszt założenie o homoskedatyczności nie jest spełnione, ale chyba nie do końca rozumiem na czym ono polega, więc ciężko jest mi stwierdzić. Końcowy model wydaje się mieć świetne dopasowanie, jednak wstrzymam się z oceną, jako że nie dzieliłem danych na treningowe i testowe. Dodatkowo dane do zadania są dość dziwne (mają mocne wady, mała np różnica między płciami we wzroście). Wydaje mi się, że model cechuje się sporym overfittingiem.**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
